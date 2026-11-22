@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Счёт по Пуассону</title>
+<style>
+:root{
+  --bg:#EDF1EC; --surface:#F8FAF7; --ink:#14201A; --muted:#566259; --line:#CBD5CC;
+  --accent:#1F6B4A; --on-accent:#F8FAF7; --home:#1F6B4A; --draw:#9AA59C; --away:#B5532E;
+  --err:#A3361B;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1813; --surface:#16231C; --ink:#E6EEE8; --muted:#97A59B; --line:#2B3C32;
+    --accent:#4FB487; --on-accent:#0E1813; --home:#4FB487; --draw:#6E7C72; --away:#E08A63;
+    --err:#F0907A; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1813; --surface:#16231C; --ink:#E6EEE8; --muted:#97A59B; --line:#2B3C32;
+  --accent:#4FB487; --on-accent:#0E1813; --home:#4FB487; --draw:#6E7C72; --away:#E08A63;
+  --err:#F0907A; color-scheme:dark;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.45 "Golos Text",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-variant-numeric:tabular-nums}
+main{max-width:520px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:22px;font-weight:800;margin:0 0 4px;letter-spacing:-.01em}
+.sub{margin:0 0 18px;color:var(--muted);font-size:14px}
+.inputs{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+label{display:block;font-size:14px;color:var(--muted);margin-bottom:6px}
+input{width:100%;font:600 26px/1.2 inherit;font-family:inherit;color:var(--ink);background:var(--surface);border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;font-variant-numeric:tabular-nums}
+input:focus-visible{outline:3px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+#err{min-height:20px;margin:8px 0 0;color:var(--err);font-size:14px}
+section{margin-top:22px}
+h2{font-size:15px;font-weight:600;margin:0 0 10px;color:var(--muted)}
+.top3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.sc{background:var(--surface);border:1.5px solid var(--line);border-radius:10px;padding:12px 8px;text-align:center}
+.sc:first-child{border-color:var(--accent)}
+.sc b{display:block;font-size:34px;font-weight:800;line-height:1.1;letter-spacing:-.02em}
+.sc span{font-size:14px;color:var(--muted)}
+.bar{display:flex;height:14px;border-radius:7px;overflow:hidden;gap:2px}
+.bar i{display:block;min-width:2px}
+.legend{display:flex;justify-content:space-between;margin-top:8px;font-size:14px}
+.legend b{font-weight:600}
+.legend div:nth-child(2){text-align:center}
+.legend div:nth-child(3){text-align:right}
+.rows{background:var(--surface);border:1.5px solid var(--line);border-radius:10px}
+.rows div{display:flex;justify-content:space-between;padding:9px 12px;border-top:1px solid var(--line)}
+.rows div:first-child{border-top:0}
+.rows b{font-weight:600}
+.gridwrap{overflow-x:auto}
+table{border-collapse:separate;border-spacing:2px;width:100%;min-width:300px;text-align:center;font-size:13px}
+th{font-weight:400;color:var(--muted);padding:3px 0}
+td{padding:7px 0;border-radius:5px;background:color-mix(in srgb,var(--accent) calc(var(--a,0)*100%),transparent);outline:1px solid var(--line);outline-offset:-1px}
+td.hi{color:var(--on-accent)}
+td.top{outline:2px solid var(--ink);outline-offset:-2px;font-weight:600}
+.note{margin-top:8px;font-size:13px;color:var(--muted)}
+.hint{margin-top:22px;font-size:13px;color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+  <h1>Счёт по Пуассону</h1>
+  <p class="sub">Введите ожидаемые голы (xG) каждой команды.</p>
+  <div class="inputs">
+    <div><label for="xh">xG хозяев</label><input id="xh" inputmode="decimal" autocomplete="off" value="1,78"></div>
+    <div><label for="xa">xG гостей</label><input id="xa" inputmode="decimal" autocomplete="off" value="1,05"></div>
+  </div>
+  <p id="err" role="alert"></p>
+
+  <div id="out">
+    <section>
+      <h2>Три самых вероятных счёта</h2>
+      <div class="top3" id="top3"></div>
+    </section>
+    <section>
+      <h2>Исход матча</h2>
+      <div class="bar" id="bar"></div>
+      <div class="legend" id="legend"></div>
+    </section>
+    <section>
+      <h2>Тоталы и «обе забьют»</h2>
+      <div class="rows" id="rows"></div>
+    </section>
+    <section>
+      <h2>Вероятность каждого счёта, %</h2>
+      <div class="gridwrap"><table id="grid" aria-label="Вероятности счетов: голы хозяев по строкам, голы гостей по столбцам"></table></div>
+      <p class="note">Строки это голы хозяев, столбцы голы гостей. Рамка у трёх самых вероятных счетов.</p>
+    </section>
+  </div>
+  <p class="hint">Голы команд считаются независимыми, поэтому ничьи и редкие крупные счета модель слегка недооценивает.</p>
+</main>
+<script>
+(function(){
+  var N=20;
+  function $(id){return document.getElementById(id)}
+  function parse(v){return parseFloat(String(v).replace(',','.'))}
+  function pois(l){var a=[Math.exp(-l)];for(var k=1;k<=N;k++)a.push(a[k-1]*l/k);return a}
+  function pct(x,d){return (x*100).toFixed(d===undefined?1:d).replace('.',',')}
+  function render(){
+    var lh=parse($('xh').value), la=parse($('xa').value);
+    var bad=!(lh>0&&lh<=8&&la>0&&la<=8);
+    $('err').textContent=bad?'Введите xG от 0,1 до 8, например 1,78.':'';
+    $('out').style.opacity=bad?'.35':'1';
+    if(bad)return;
+    var ph=pois(lh), pa=pois(la), cells=[], hw=0, dr=0, aw=0, tot=[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+    for(var h=0;h<=N;h++)for(var a=0;a<=N;a++){
+      var p=ph[h]*pa[a]; cells.push([h,a,p]);
+      if(h>a)hw+=p; else if(h===a)dr+=p; else aw+=p;
+      tot[h+a]+=p;
+    }
+    var sorted=cells.slice().sort(function(x,y){return y[2]-x[2]});
+    var top=sorted.slice(0,3), topKey={};
+    top.forEach(function(c){topKey[c[0]+':'+c[1]]=1});
+    $('top3').innerHTML=top.map(function(c){return '<div class="sc"><b>'+c[0]+':'+c[1]+'</b><span>'+pct(c[2])+'%</span></div>'}).join('');
+    var sum=hw+dr+aw;
+    $('bar').innerHTML='<i style="flex:'+hw+';background:var(--home)"></i><i style="flex:'+dr+';background:var(--draw)"></i><i style="flex:'+aw+';background:var(--away)"></i>';
+    $('legend').innerHTML='<div>Хозяева<br><b>'+pct(hw/sum)+'%</b></div><div>Ничья<br><b>'+pct(dr/sum)+'%</b></div><div>Гости<br><b>'+pct(aw/sum)+'%</b></div>';
+    function over(line){var s=0;for(var t=0;t<tot.length;t++)if(t>line)s+=tot[t];return s}
+    var btts=(1-ph[0])*(1-pa[0]);
+    var rows=[['Тотал больше 1,5',over(1.5)],['Тотал больше 2,5',over(2.5)],['Тотал больше 3,5',over(3.5)],['Тотал больше 4,5',over(4.5)],['Обе забьют',btts]];
+    $('rows').innerHTML=rows.map(function(r){return '<div><span>'+r[0]+'</span><b>'+pct(r[1])+'%</b></div>'}).join('');
+    var G=6, mx=0;
+    for(var i=0;i<G;i++)for(var j=0;j<G;j++)mx=Math.max(mx,ph[i]*pa[j]);
+    var html='<tr><th></th>';
+    for(var j=0;j<G;j++)html+='<th>'+j+'</th>';
+    html+='</tr>';
+    for(var i=0;i<G;i++){
+      html+='<tr><th>'+i+'</th>';
+      for(var j=0;j<G;j++){
+        var v=ph[i]*pa[j], al=(v/mx)*0.9, cls=(al>0.5?'hi':'')+(topKey[i+':'+j]?' top':'');
+        html+='<td class="'+cls.trim()+'" style="--a:'+al.toFixed(3)+'">'+pct(v)+'</td>';
+      }
+      html+='</tr>';
+    }
+    $('grid').innerHTML=html;
+  }
+  $('xh').addEventListener('input',render);
+  $('xa').addEventListener('input',render);
+  render();
+})();
+</script>
+</body>
+</html>
